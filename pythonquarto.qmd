@@ -1,0 +1,13 @@
+---
+title: "Teste python"
+format: 
+    html:
+        code-fold: true
+        self-contained: true
+# jupyter:
+---
+
+# Teste loko aqui
+
+
+vou testar umas paradas 

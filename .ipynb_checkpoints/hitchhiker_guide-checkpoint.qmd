@@ -1,0 +1,515 @@
+---
+title: "The hitchhiker guide to Explanatory Model Analysis"
+subtitle: "Rendering Quarto by @caiosanvallio"
+
+author: 
+  - name: "Przemylaw Bicek"
+
+format: 
+  html:
+    self-contained: true
+    code-fold: show
+    code-tools: true
+    code-line-numbers: true
+    df-print: paged
+    toc: true
+    toc-depth: 2
+    # number-sections: true
+    # number-depth: 2
+    
+execute: 
+  warning: false
+# lang: pt
+---
+
+# Why XAI[^1]?
+
+<div style='text-align: justify;'>
+**D** Instance level explanations[^2] help **to debug a model** / understand why the model was wrong.
+
+**A** Dataset level explanations[^3] help **to audit a model**, check if it complies with the requirements.
+
+**L** Understand **what to do to leverage** a prediction for a model.
+
+**E** Allow to confront the model with **expert knowledge**. If consistent we are more likely to **trust the prediction**.
+
+**X** **Examine** models e.g. in the **champion-challenger analysis**.
+</div>
+
+<br>
+<br>
+
+## DALEX architeture:
+
+```
+ranger(y~., data=df) |> explain() |> model_parts() |> plot()
+```
+
+<br>
+<br>
+
+## First explainer[^4]
+
+```{r}
+#| label: dataset
+
+library(DALEX)
+head(titanic_imputed, 1)
+
+```
+
+
+<br>
+
+Random forest classificatiion model for survived
+
+```{r}
+#| label: moedel_ranger
+
+library(ranger)
+model_ranger <- ranger(survived ~ ., 
+                       data = titanic_imputed, 
+                       classification = TRUE, 
+                       probability = TRUE)
+
+exp_ranger <- explain(model_ranger,
+                      data = titanic_imputed[,1:7],
+                      y = titanic_imputed$survived)
+exp_ranger$model_info
+predict(exp_ranger, titanic_imputed[1,])
+
+```
+
+<br>
+
+and a logistical regression models with splines.
+
+```{r}
+#| label: model_lm
+
+library("rms")
+model_rms <- lrm(survived ~ rcs(age)*gender + rcs(fare) + class,
+                 data = titanic_imputed)
+
+exp_rms <- explain(model_rms,
+                   data = titanic_imputed[,1:7], 
+                   y = titanic_imputed$survived,
+                   predict_function = function(m, x) 
+                     predict(m, x, type = "fitted"),
+                   label = "Logistic with splines")
+exp_rms$model_info
+predict(exp_rms, titanic_imputed[1,])
+
+```
+
+<br>
+<br>
+
+# How goog is he model?
+
+<div style='text-align: justify;'>
+The evaluation of the model performance for the classification is based on different measures than for the regression. For regression, commonly used measures are Mean squared error $MSE$ (@eq-mse) and Rooted mean squared error $RMSE$ (@eq-rmse). For classification, commonly used measures are $Accuracy$ (@eq-acc), $Precision$ (@eq-pre) and $Recall$ (@eq-rec) and $F1 score$ (@eq-f1).
+</div>
+
+$$
+MSE(f)=\frac{1}{n}\sum_{i}^{n}(fx_{i} - y_{i})^{2}
+$${#eq-mse}
+
+<br>
+
+$$
+RMSE(f)=\sqrt{MSE(f, X, y)}
+$${#eq-rmse}
+
+<br>
+
+$$
+ACC(f)=(TP+TN)/n
+$${#eq-acc}
+
+<br>
+
+$$
+Prec(f)=TP/(TP+FP)
+$${#eq-pre}
+
+<br>
+
+$$
+Recall(f)=TP/(TP+FN)
+$${#eq-rec}
+
+<br>
+
+$$
+Recall(f)=2\frac{Prec(f) * Recall(f)}{Prec(f) + Recall(f)}
+$${#eq-f1}
+
+<br>
+<br>
+
+## Model performance
+
+<div style='text-align: justify;'>
+Model exploration starts with an assessment of how good is the model. The `DALEX::model_performance` function calculates a set of the most common measures for the specified model.
+</div>
+
+<br>
+
+```{r}
+#| label: mp_ranger
+
+mp_ranger <- model_performance(exp_ranger)
+mp_ranger
+
+```
+
+<br>
+
+```{r}
+#| label: mp_rms
+
+mp_rms <- model_performance(exp_rms)
+mp_rms
+
+```
+
+<br>
+
+<div style='text-align: justify;'>
+
+*Note*: The model is evaluated on the data given in the explainer. Use `DALEX::update_data()` to specify another dataset.
+
+*Note*: Explainer knows whether the model is for classification or regression, so it automatically selects the right measures. It can be overridden if needed.
+</div>
+
+<br>
+
+## Performance charts
+
+<div style='text-align: justify;'>
+The S3 generic plot function draws a graphical summary of the model performance. With the geom argument, one can determine the type of chart.
+</div>
+
+<br>
+
+### Boxplots
+
+```{r}
+#| label: fig-boxplots
+#| fig-cap: Boxplots for resduals.
+
+plot(mp_ranger, mp_rms, geom = "boxplot")
+
+```
+
+<br>
+
+### ROC curves
+
+```{r}
+#| label: fig-aucroc
+#| fig-cap: Roc curves.
+
+plot(mp_ranger, mp_rms, geom = "roc")
+
+```
+
+<br>
+
+### LIFT curves
+
+```{r}
+#| label: fig-lift
+#| fig-cap: LIFT curves.
+
+plot(mp_ranger, mp_rms, geom = "lift")
+
+```
+
+<br>
+<br>
+
+# Which variables have an impact on a model prediction?
+
+<div style='text-align: justify;'>
+Once we calculate the model prediction, the question often arises which variables had the greatest impact on it.
+</div>
+
+```{r}
+#| label: henry
+
+henry <- titanic_imputed[1,]
+predict(exp_ranger, henry)
+
+```
+
+<br>
+
+<div style='text-align: justify;'>
+For linear models it is easy to assess the impact of individual variables because there is one coefficient for each variable. It turns out that such attributions can be calculated for any predictive model. The most popular model agnostic method are Shapley values. They may be calculated with a `predict_parts()` function. 
+</div>
+
+```{r}
+#| label: fig-sh_ranger
+#| fig-cap: Shapley values assess the impact of each variable on a model prediction. The  ttributions add up to model prediction.
+
+sh_ranger <- predict_parts(exp_ranger, henry, type = "shap")
+plot(sh_ranger, show_boxplots = FALSE)
+
+```
+
+<br>
+
+<div style='text-align: justify;'>
+The Shapley values are additive. For models with interactions, it is often too much of a  implification. The Break Down method allows for the identification of interactions.
+</div>
+
+```{r}
+#| label: bd_ranger
+
+bd_ranger <- predict_parts(exp_ranger, henry, type = "break_down_interactions")
+bd_ranger
+
+```
+
+```{r}
+#| label: fig-bd_ranger
+#| fig-cap: Break down values assess the impact of variable or their interactions on model predictions.
+
+plot(bd_ranger)
+
+```
+
+<br>
+
+<div style='text-align: justify;'>
+The show_boxplots argument allows you to highlight the stability bars of the estimated attributions.
+Other possible values of the type argument are oscillations, shap, break_down,  break_down_interactions.
+With order one can force a certain sequence of variables.
+</div>
+
+```{r}
+#| label: fig-bd_ranger2
+#| fig-cap: Break down values for selected order of variables.
+
+bd_ranger <- predict_parts(exp_ranger, henry,
+order = c("age", "gender", "fare", "class",
+          "parch", "sibsp", "embarked"))
+plot(bd_ranger)
+
+```
+
+<br>
+
+<div style='text-align: justify;'>
+By default, functions such as model_parts, predict_parts, model_profiles do not calculate statistics on the entire data set, but on n_samples of random cases, and the entire procedure is repeated B times to estimate the error bars.
+</div>
+
+<br>
+<br>
+
+# Which variables have an impact on the model?
+
+<div style='text-align: justify;'>
+Many models have built-in ways of assessing the importance of variables. The procedure described below is universal and does not depend on the model structure. 
+
+Note that if a variable is important in a model, then after its permutation the model predictions should be less accurate. The permutation importance of a variable $i$ is the difference between the model performance for the original data and the model performance measured on data with the permutated variable $i$[^5].  
+
+The `DALEX::model_parts()` function calculates the importance of variables. The type argument determines whether to subtract (type="difference"), divide (type="ratio") or present original loss functions (type="raw").
+</div>
+
+<br>
+
+```{r}
+#| label: mp_ranger2
+
+mp_ranger <- model_parts(exp_ranger, type = "difference")
+mp_ranger
+
+```
+
+```{r}
+#| label: fig-mp_ranger2
+#| fig-cap: Importance scores $V(f, i)$.
+
+plot(mp_ranger, show_boxplots = FALSE)
+
+```
+
+<br>
+
+<div style='text-align: justify;'>
+The importance of variables is a convenient tool to compare models. It is enough to put several importance objects to the generic S3 `plot()` function.
+</div>
+
+```{r}
+#| label: fig-mp_ranger_mp_rms
+#| fig-height: 8
+#| fig-cap:  Variable importance plots for two models. Each bar starts in $L^{i}_{perm}(f)$ and ends in $L_{org}(f)$
+
+mp_ranger <- model_parts(exp_ranger)
+mp_rms <- model_parts(exp_rms)
+plot(mp_ranger, mp_rms, show_boxplots = FALSE)
+
+```
+
+<br>
+
+<div style='text-align: justify;'>
+By default, $RMSE$ is used for regression and $1-AUC$ for classification problems. But you can change the loss function by specifying the `loss_function` argument.
+</div>
+
+<br>
+<br>
+
+# What if?
+
+<div style='text-align: justify;'>
+Ceteris-paribus profiles[^6] show how the model response would change for a selected observation if one of the coordinates of that observation were changed while leaving the other coordinates unchanged.
+
+The `predict_profiles()` function calculated CP profiles for a selected observation, model and vector of variables (all continuous variables by default).
+
+</div>
+
+<br>
+
+```{r}
+#| label: cp_ranger
+
+cp_ranger <- predict_profile(exp_ranger, henry)
+cp_ranger
+
+```
+
+<br>
+
+CP profiles can be visualized with the generic `plot()` function.
+
+```{r}
+#| label: fig-cp_ranger_line
+#| fig-cap: The dot shows the observation under analysis. CP profile shows how the model prediction will change for changes in the selected variable.
+
+plot(cp_ranger, variables = c("age", "fare"))
+
+```
+
+<br>
+
+<div style='text-align: justify;'>
+For technical reasons, quantitative and qualitative variables cannot be shown in a single chart. So if you want to show the importance for quality variables you need to plot them separately.
+</div>
+
+```{r}
+#| label: fig-cp_ranger_bars
+#| fig-cap: The dot shows the observation under analysis. CP profile shows how the model prediction will change for changes in the selected variable.
+
+plot(cp_ranger, variables = "class", categorical_type = "bars")
+
+```
+
+<br>
+
+<div style='text-align: justify;'>
+The `plot` function can combine different models, making it easier to see similarities and differences. The `color` argument allows you to highlight models in the figure.
+</div>
+
+```{r}
+#| label: fig-cp_rms
+#| fig-cap: CP profiles for two models.
+
+cp_rms <- predict_profile(exp_rms, henry)
+plot(cp_ranger, cp_rms, variables = "age", color = "_label_")
+
+```
+
+<br>
+
+## Oscilatons
+
+<div style='text-align: justify;'>
+Local importance of variables can be measured as oscillations of CP plots. The greater the variability of the CP profile, the more important is the variable. Set `type = "oscillations"` in the `predict_parts` function.
+</div>
+
+<br>
+
+```{r}
+#| label: oscillations
+
+predict_parts(exp_rms, henry, type = "oscillations")
+
+```
+
+<br>
+<br>
+
+## Partial dependence profiles
+
+<div style='text-align: justify;'>
+Partial dependence profiles are averages from CP profiles for all (or a large enough number) observations. The `model_profiles()` function calculates PD profiles for a specified model and variables (all by default).
+Profiles can be then drawn with the plot() function. See an example in @fig-mp_ranger3.
+</div>
+
+```{r}
+#| label: fig-mp_ranger3
+#| fig-cap: Partial dependence profile for age variable.
+
+mp_ranger <- model_profile(exp_ranger)
+plot(mp_ranger, variables = "age")
+
+```
+
+<br>
+
+## Grouped partial dependence profiles
+
+<div style='text-align: justify;'>
+By default, the average is calculated for all observations. But with the argument groups= one can specify a factor variable in which CP profiles will be averaged. See an example in Figure @fig-mp_ranger4.
+</div>
+
+```{r}
+#| label: fig-mp_ranger4
+#| fig-cap: Partial dependence for age in groups defined by gender.
+
+mp_ranger <- model_profile(exp_ranger, groups = "gender")
+plot(mp_ranger, variables = "age")
+
+```
+
+<br>
+
+## Grouped partial dependence profiles
+
+<div style='text-align: justify;'>
+If the model is additive, all CP profiles are parallel. But if the model has interactions, CP profiles may have different shapes for different observations. Defining the $k$ argument allows to find and calculate the average in $k$ segments of CP profiles.
+</div>
+
+```{r}
+#| label: fig-mp_ranger5
+#| fig-cap: Partial dependence for three segments of CP profiles.
+
+mp_ranger <- model_profile(exp_ranger, k = 3, center = TRUE)
+plot(mp_ranger, variables = "age")
+
+```
+
+<br>
+
+<div style='text-align: justify;'>
+PDP profiles do not take into account the correlation structure between the variables. For correlated variables, the *Ceteris paribus* assumption may not make sense. The model_profile function can also calculate other types of aggregates, such as marginal profiles and accumulated local profiles. To do this, specify the argument `type= for "conditional"` or `"accumulated"`.
+</div>
+
+<div style='text-align: justify;'>
+[^1]: EMA is a subfield of eXplainable Artificial Intelligence. It covers the tools and processes for analysing predictive models in order to better understand their behaviour
+
+[^2]: Instance level = local explanations - methods to explore the model from the perspective of a single prediction.
+
+[^3]: Dataset level = global explanations - analysis of the overall model behaviour, the perspective of a population.
+
+[^4]: Explainer is an object / adapter that wraps the model and creates an uniform  tructure and interface for operations.
+
+[^5]: $V(f,i)=L^{i}_{perm}(f)-L_{org}(f)$, where $L_{org}(f)$ is the value of loss functon for original data, while $L^{i}_{perm}(f)$ is the value of loss function after permuted $i-th$ variable.
+
+[^6]: *Ceteris Paribus* is a Latin phrase for "other things being equal".
+
+</div>
