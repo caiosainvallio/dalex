@@ -1,0 +1,204 @@
+---
+title: "Model interpretation study"
+subtitle: "Using DALEX library"
+
+author: 
+  - name: Caio Sain Vallio
+    url: https://www.linkedin.com/in/caiosainvallio/
+    affiliations:
+      - name: zetta.health
+        url: https://zetta.health/
+  
+format: 
+  html:
+    self-contained: true
+    code-fold: true
+    code-tools: true
+    code-line-numbers: true
+    df-print: paged
+    toc: true
+    toc-depth: 2
+
+execute: 
+  warning: false
+
+jupyter: conda-env-dalex-py
+---
+
+
+
+
+# Create models
+
+```{python}
+import dalex as dx
+titanic = dx.datasets.load_titanic()
+X = titanic.drop(columns='survived')
+y = titanic.survived
+```
+
+```{python}
+from sklearn.preprocessing import StandardScaler, OneHotEncoder
+from sklearn.compose import make_column_transformer
+from sklearn.pipeline import make_pipeline
+
+preprocess = make_column_transformer(
+    (StandardScaler(), ['age', 'fare', 'parch', 'sibsp']),
+    (OneHotEncoder(), ['gender', 'class', 'embarked']))
+```
+
+## Logistic regression model
+
+```{python}
+from sklearn.linear_model import LogisticRegression
+
+titanic_lr = make_pipeline(
+    preprocess,
+    LogisticRegression(penalty = 'l2'))
+titanic_lr.fit(X, y)
+```
+
+
+## Logistic regression model
+
+```{python}
+from sklearn.ensemble import RandomForestClassifier
+
+titanic_rf = make_pipeline(
+    preprocess,
+    RandomForestClassifier(max_depth = 3, n_estimators = 500))
+titanic_rf.fit(X, y)
+```
+
+
+## Gradient boosting model
+
+```{python}
+from sklearn.ensemble import GradientBoostingClassifier
+
+titanic_gbc = make_pipeline(
+    preprocess,
+    GradientBoostingClassifier(n_estimators = 100))
+titanic_gbc.fit(X, y)
+```
+
+
+## Support vector machine model
+
+```{python}
+from sklearn.svm import SVC
+
+titanic_svm = make_pipeline(
+    preprocess,
+    SVC(probability = True))
+titanic_svm.fit(X, y)
+```
+
+
+# Models' predictions
+
+```{python}
+import pandas as pd
+
+johnny_d = pd.DataFrame({'gender': ['male'],
+                       'age'     : [8],
+                       'class'   : ['1st'],
+                       'embarked': ['Southampton'],
+                       'fare'    : [72],
+                       'sibsp'   : [0],
+                       'parch'   : [0]},
+                      index = ['JohnnyD'])
+
+henry = pd.DataFrame({'gender'   : ['male'],
+                       'age'     : [47],
+                       'class'   : ['1st'],
+                       'embarked': ['Cherbourg'],
+                       'fare'    : [25],
+                       'sibsp'   : [0],
+                       'parch'   : [0]},
+                      index = ['Henry'])
+```
+
+
+
+
+
+# Instance Level
+
+## Break-down plots for additive attibutions
+
+This concept answer the question: *which variables contribute to this result the most?* 
+
+```{python}
+import dalex as dx
+titanic_rf_exp = dx.Explainer(titanic_rf, X, y, 
+                  label = "Titanic RF Pipeline")
+```
+
+```{python}
+bd_henry = titanic_rf_exp.predict_parts(henry, 
+             type = 'break_down')
+bd_henry.result
+```
+
+
+```{python}
+bd_henry.plot()
+```
+
+
+```{python}
+import numpy as np
+
+bd_henry = titanic_rf_exp.predict_parts(henry,
+        type = 'break_down',
+        order = np.array(['gender', 'class', 'age',
+            'embarked', 'fare', 'sibsp', 'parch']))
+bd_henry.plot(max_vars = 5)
+```
+
+
+
+## Break-down plots for additive interactions
+
+Interaction (deviation from additivity) means that the effect of an explanatory variable depends on the value(s) of other variable(s).
+
+```{python}
+ibd_henry = titanic_rf_exp.predict_parts(henry, 
+                type = 'break_down_interactions', 
+                interaction_preference = 10)
+ibd_henry.result
+```
+
+```{python}
+ibd_henry.plot()
+```
+
+
+## Shapley Additice Explanations (SHAP) for average attributions
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Dataset Level
+
+
+
+
+
