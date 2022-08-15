@@ -177,20 +177,152 @@ ibd_henry.plot()
 
 ## Shapley Additice Explanations (SHAP) for average attributions
 
+To remove the influence of the ordering of the variables.
+
+```{python}
+bd_henry = titanic_rf_exp.predict_parts(henry, type = 'shap')
+bd_henry.result
+```
+
+```{python}
+bd_henry.plot()
+```
 
 
 
+## Local Interpretable Model-agnostic Explanations (LIME)
+Break-down (BD) plots and Shapley values, are most suitable for models with a small or moderate number of explanatory variables.
+The most popular example of such sparse explainers is the Local Interpretable Model-agnostic Explanations (LIME) method and its modifications.
 
 
+In the first step, we read the Titanic data and encode categorical variables. In this case, we use the simplest encoding for gender, class, and embarked, i.e., the label-encoding.
+
+```{python}
+import dalex as dx
+
+titanic = dx.datasets.load_titanic()
+X = titanic.drop(columns='survived')
+y = titanic.survived
+
+from sklearn import preprocessing
+le = preprocessing.LabelEncoder()
+
+X['gender']   = le.fit_transform(X['gender'])
+X['class']    = le.fit_transform(X['class'])
+X['embarked'] = le.fit_transform(X['embarked'])
+```
 
 
+In the next step we train a random forest model.
+
+```{python}
+from sklearn.ensemble import RandomForestClassifier as rfc
+titanic_fr = rfc()
+titanic_fr.fit(X, y)
+```
+
+It is time to define the observation for which model prediction will be explained. We write Henry’s data into `pandas.Series` object.
+
+```{python}
+import pandas as pd
+henry = pd.Series([1, 47.0, 0, 1, 25.0, 0, 0], 
+                  index =['gender', 'age', 'class', 'embarked',
+                          'fare', 'sibsp', 'parch']) 
+```
+
+The `lime` library explains models that operate on images, text, or tabular data. In the latter case, we have to use the `LimeTabularExplainer` module.
+
+```{python}
+from lime.lime_tabular import LimeTabularExplainer 
+explainer = LimeTabularExplainer(X, 
+                      feature_names=X.columns, 
+                      class_names=['died', 'survived'], 
+                      discretize_continuous=False, 
+                      verbose=True)
+```
+
+The result is an explainer that can be used to interpret a model around specific observations. In the following example, we explain the behaviour of the model for Henry. The `explain_instance()` method finds a local approximation with an interpretable linear model. The result can be presented graphically with the `show_in_notebook()` method.
+
+```{python}
+lime = explainer.explain_instance(henry, titanic_fr.predict_proba)
+lime.show_in_notebook(show_table=True)
+```
 
 
+## Ceteris-paribus profiles
+
+*"Ceteris paribus"* is a Latin phrase meaning "other things held constant" or "all else unchanged".
+
+Ceteris-paribus (CP) profiles show how a model’s prediction would change if the value of a single exploratory variable changed. 
+
+```{python}
+import dalex as dx
+titanic = dx.datasets.load_titanic()
+X = titanic.drop(columns='survived')
+y = titanic.survived
+```
+
+```{python}
+from sklearn.ensemble import RandomForestClassifier
+
+titanic_rf = make_pipeline(
+    preprocess,
+    RandomForestClassifier(max_depth = 3, n_estimators = 500))
+titanic_rf.fit(X, y)
+```
+
+```{python}
+henry = pd.DataFrame({'gender'   : ['male'],
+                       'age'     : [47],
+                       'class'   : ['1st'],
+                       'embarked': ['Cherbourg'],
+                       'fare'    : [25],
+                       'sibsp'   : [0],
+                       'parch'   : [0]},
+                      index = ['Henry'])
 
 
+import dalex as dx
+titanic_rf_exp = dx.Explainer(titanic_rf, X, y, 
+                  label = "Titanic RF Pipeline")
+```
+
+```{python}
+cp_henry = titanic_rf_exp.predict_profile(henry)
+cp_henry.result
+```
+
+```{python}
+cp_henry.plot(variables = ['age', 'fare'])
+```
+
+```{python}
+cp_henry.plot(variables = ['class', 'embarked'],
+               variable_type = 'categorical')
+```
+
+```{python}
+from sklearn.linear_model import LogisticRegression
+
+titanic_lr = make_pipeline(
+    preprocess,
+    LogisticRegression(penalty = 'l2'))
+titanic_lr.fit(X, y)
+```
+
+```{python}
+import dalex as dx
+titanic_lr_exp = dx.Explainer(titanic_lr, X, y, 
+                  label = "Titanic RL Pipeline")
+```
+
+```{python}
+cp_henry2 = titanic_lr_exp.predict_profile(henry)
+cp_henry.plot(cp_henry2, variables = ['age', 'fare'])
+```
 
 
-
+## Ceteris-paribus oscillations
 
 
 
