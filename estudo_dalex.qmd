@@ -322,15 +322,55 @@ cp_henry.plot(cp_henry2, variables = ['age', 'fare'])
 ```
 
 
-## Ceteris-paribus oscillations
-
-
-
-
-
 # Dataset Level
 
+## Model-performance Measures
+
+```{python}
+import dalex as dx
+titanic_rf_exp = dx.Explainer(titanic_rf, X, y, 
+                  label = "Titanic RF Pipeline")
+```
+
+
+```{python}
+mp_rf = titanic_rf_exp.model_performance(model_type = "classification", 
+          cutoff = 0.5)
+mp_rf.result
+```
+
+```{python}
+import plotly.express as px
+from sklearn.metrics import roc_curve, auc
+y_score = titanic_rf_exp.predict(X)
+fpr, tpr, thresholds = roc_curve(y, y_score)
+fig = px.area(x=fpr, y=tpr,
+    title=f'ROC Curve (AUC={auc(fpr, tpr):.4f})',
+    labels=dict(x='False Positive Rate', y='True Positive Rate'),
+    width=700, height=500)
+fig.add_shape(
+    type='line', line=dict(dash='dash'),
+    x0=0, x1=1, y0=0, y1=1)
+fig.update_yaxes(scaleanchor="x", scaleratio=1)
+fig.update_xaxes(constrain='domain')
+fig.show()
+```
+
+```{python}
+df = pd.DataFrame({'False Positive Rate': fpr,
+        'True Positive Rate': tpr }, index=thresholds)
+df.index.name = "Thresholds"
+df.columns.name = "Rate"
+fig_thresh = px.line(df, 
+    title='TPR and FPR at every threshold', width=700, height=500)
+fig_thresh.update_yaxes(scaleanchor="x", scaleratio=1)
+fig_thresh.update_xaxes(range=[0, 1], constrain='domain')
+fig_thresh.show()
+```
 
 
 
 
+## Variable-importance Measures
+
+model-specific Vs. model-agnostic
