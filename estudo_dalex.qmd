@@ -374,3 +374,147 @@ fig_thresh.show()
 ## Variable-importance Measures
 
 model-specific Vs. model-agnostic
+
+```{python}
+import dalex as dx
+titanic_rf_exp = dx.Explainer(titanic_rf, X, y, 
+                  label = "Titanic RF Pipeline")
+```
+
+
+```{python}
+mp_rf = titanic_rf_exp.model_parts()
+mp_rf.result
+```
+
+```{python}
+mp_rf.plot()
+```
+
+
+```{python}
+vi_grouped = titanic_rf_exp.model_parts(
+                variable_groups={'personal': ['gender', 'age', 
+                                              'sibsp', 'parch'],
+                                   'wealth': ['class', 'fare']})
+vi_grouped.result
+```
+
+
+```{python}
+vi_grouped.plot()
+```
+
+
+
+## Partial-dependence profiles
+
+```{python}
+import dalex as dx
+titanic_rf_exp = dx.Explainer(titanic_rf, X, y, 
+                  label = "Titanic RF Pipeline")
+```
+
+
+
+```{python}
+pd_rf = titanic_rf_exp.model_profile(variables = ['age', 'fare'])
+pd_rf.result
+```
+
+
+
+```{python}
+pd_rf.plot()
+```
+
+
+
+```{python}
+pd_rf.plot(geom = 'profiles')
+```
+
+
+
+```{python}
+pd_rf = titanic_rf_exp.model_profile( variable_type = 'categorical')
+pd_rf.plot(variables = ['gender', 'class'])
+```
+
+
+```{python}
+pd_rf = titanic_rf_exp.model_profile(groups = 'gender', 
+                                  variables = ['age', 'fare'])
+pd_rf.plot()
+```
+
+```{python}
+import dalex as dx
+titanic_lr_exp = dx.Explainer(titanic_lr, X, y, 
+                  label = "Titanic RL Pipeline")
+```
+
+
+```{python}
+pdp_rf = titanic_rf_exp.model_profile()
+pdp_lr = titanic_lr_exp.model_profile()
+```
+
+```{python}
+pdp_rf.plot(pdp_lr, variables = ['age', 'fare'])
+```
+
+
+## Local-dependence and accumulated-local profiles
+
+```{python}
+import dalex as dx
+titanic_rf_exp = dx.Explainer(titanic_rf, X, y, 
+                    label = "Titanic RF Pipeline")
+```
+
+```{python}
+ld_rf = titanic_rf_exp.model_profile(type = 'conditional')
+ld_rf.result['_label_'] = 'LD profiles'
+ld_rf.result
+```
+
+```{python}
+ld_rf.plot(variables = ['age', 'fare'])
+```
+
+
+```{python}
+al_rf = titanic_rf_exp.model_profile(type = 'accumulated')
+al_rf.result['_label_'] = 'AL profiles'
+```
+
+
+```{python}
+al_rf.plot(ld_rf, variables = ['age', 'fare'])
+```
+
+
+## Residual-diagnostics plots
+
+```{python}
+import dalex as dx
+titanic_rf_exp = dx.Explainer(titanic_rf, X, y, 
+                    label = "Titanic RF Pipeline")
+```
+
+
+```{python}
+md_rf = titanic_rf_exp.model_diagnostics()
+md_rf.result
+```
+
+
+```{python}
+md_rf.plot()
+```
+
+
+```{python}
+md_rf.plot(variable = "ids", yvariable = "abs_residuals")
+```
